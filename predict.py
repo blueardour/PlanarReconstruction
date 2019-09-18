@@ -34,6 +34,7 @@ transforms = tf.Compose([
 def eval(_run, _log):
     cfg = edict(_run.config)
 
+    print(_run.config, type(_run.config))
     torch.manual_seed(cfg.seed)
     np.random.seed(cfg.seed)
     random.seed(cfg.seed)
@@ -45,8 +46,10 @@ def eval(_run, _log):
         os.makedirs(checkpoint_dir)
 
     # build network
+    print(cfg.model, type(cfg.model))
     network = UNet(cfg.model)
 
+    print(cfg.resume_dir, type(cfg.resume_dir))
     if not cfg.resume_dir == 'None':
         model_dict = torch.load(cfg.resume_dir)
         network.load_state_dict(model_dict)
@@ -131,8 +134,9 @@ def eval(_run, _log):
 
             image = np.concatenate((image, pred_seg, blend_pred, mask, depth), axis=1)
 
-            cv2.imshow('image', image)
-            cv2.waitKey(0)
+            cv2.imwrite('result.jpg', image)
+            #cv2.imshow('image', image)
+            #cv2.waitKey(0)
 
 
 if __name__ == '__main__':

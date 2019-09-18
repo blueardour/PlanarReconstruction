@@ -52,7 +52,7 @@ class Baseline(nn.Module):
 
         channel = 64
         # top down
-        self.upsample = nn.Upsample(scale_factor=2, mode='bilinear')
+        self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
         self.up_conv5 = nn.Conv2d(channel, channel, (1, 1))
         self.up_conv4 = nn.Conv2d(channel, channel, (1, 1))
         self.up_conv3 = nn.Conv2d(channel, channel, (1, 1))
