@@ -7,6 +7,7 @@ from distutils.version import LooseVersion
 
 from sacred import Experiment
 from easydict import EasyDict as edict
+import pdb
 
 import torch
 import torch.nn.functional as F
@@ -70,21 +71,36 @@ def predict(_run, _log):
         # forward pass
         logit, embedding, _, _, param = network(image)
 
+        # save buffer
+        print("shape", logit.shape, embedding.shape, param.shape, k_inv_dot_xy1.shape)
+        np.savetxt("data/logit.txt", logit.cpu().numpy().reshape(1,-1), "%f", '\n')
+        np.savetxt("data/embedding.txt", embedding.cpu().numpy().reshape(1,-1), "%f", '\n')
+        np.savetxt("data/param.txt", param.cpu().numpy().reshape(1,-1), "%f", '\n')
+        np.savetxt("data/k_inv_dot_xy1.txt", k_inv_dot_xy1.cpu().numpy().reshape(1,-1), "%f", '\n')
+
         prob = torch.sigmoid(logit[0])
-        
+        np.savetxt("data/prob.txt", prob.cpu().numpy().reshape(1,-1), "%f", '\n')
+
         # infer per pixel depth using per pixel plane parameter, currently Q_loss need a dummy gt_depth as input
         _, _, per_pixel_depth = Q_loss(param, k_inv_dot_xy1, torch.ones_like(logit))
+        print("shape", per_pixel_depth.shape)
+        np.savetxt("data/per_pixel_depth.txt", per_pixel_depth.cpu().numpy().reshape(1,-1), "%f", '\n')
 
         # fast mean shift
         segmentation, sampled_segmentation, sample_param = bin_mean_shift.test_forward(
             prob, embedding[0], param, mask_threshold=0.1)
 
+        #pdb.set_trace()
+        
         # since GT plane segmentation is somewhat noise, the boundary of plane in GT is not well aligned, 
         # we thus use avg_pool_2d to smooth the segmentation results
         b = segmentation.t().view(1, -1, h, w)
         pooling_b = torch.nn.functional.avg_pool2d(b, (7, 7), stride=1, padding=(3, 3))
         b = pooling_b.view(-1, h*w).t()
         segmentation = b
+
+        print("shape", segmentation.shape)
+        np.savetxt("data/segmentation.txt", segmentation.t().cpu().numpy().reshape(1,-1), "%f", '\n')
 
         # infer instance depth
         instance_loss, instance_depth, instance_abs_disntace, instance_parameter = instance_parameter_loss(
@@ -126,8 +142,8 @@ def predict(_run, _log):
 
         image = np.concatenate((image, pred_seg, blend_pred, mask, depth), axis=1)
 
-        cv2.imshow('image', image)
-        cv2.waitKey(0)
+        #cv2.imshow('image', image)
+        #cv2.waitKey(0)
 
 
 if __name__ == '__main__':

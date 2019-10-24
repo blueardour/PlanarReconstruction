@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
 
 
 class InstanceParameterLoss(nn.Module):
@@ -35,11 +36,20 @@ class InstanceParameterLoss(nn.Module):
             sample_segmentation[sample_segmentation < 0.5] = 0.
         weight_matrix = F.normalize(sample_segmentation, p=1, dim=0)
         instance_param = torch.matmul(sample_params, weight_matrix)      # (3, K)
+        print("instance_param", instance_param.shape)
+        np.savetxt("data/instance_param.txt", instance_param.t().cpu().numpy().reshape(1,-1), "%f", '\n')
+
 
         # infer depth for every pixels and select the one with highest probability
         depth_maps = 1. / torch.matmul(instance_param.t(), self.k_inv_dot_xy1)     # (K, h*w)
+        #tmp = torch.matmul(instance_param.t(), self.k_inv_dot_xy1)
+        #np.savetxt("data/depth_maps_reverse.txt", tmp.cpu().numpy().reshape(1,-1), "%f", '\n')
         _, index = segmentation.max(dim=1)
         inferred_depth = depth_maps.t()[range(h*w), index].view(1, 1, h, w)
+        print("inferred_depth", inferred_depth.shape)
+        np.savetxt("data/inferred_depth.txt", inferred_depth.cpu().numpy().reshape(1,-1), "%f", '\n')
+        #import pdb
+        #pdb.set_trace()
 
         if not return_loss:
             return _, inferred_depth, _, instance_param

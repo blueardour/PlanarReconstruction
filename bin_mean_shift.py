@@ -31,8 +31,11 @@ class Bin_Mean_Shift(nn.Module):
         start_x, end_x = get_start_end(min_x.item(), max_x.item(), bin_num)
         start_y, end_y = get_start_end(min_y.item(), max_y.item(), bin_num)
 
+
         x = torch.linspace(start_x, end_x, bin_num).view(bin_num, 1)
         y = torch.linspace(start_y, end_y, bin_num).view(1, bin_num)
+
+        #print(start_x, end_x, start_y, end_y, x)
 
         x_repeat = x.repeat(1, bin_num).view(-1, 1)
         y_repeat = y.repeat(bin_num, 1).view(-1, 1)
@@ -49,9 +52,12 @@ class Bin_Mean_Shift(nn.Module):
         :return: filtered_seed_points
         """
         distance_matrix = self.cal_distance_matrix(seed_point, point)  # (n, K)
+        np.savetxt("data/filter_seed_distance-%d.txt" % min_count, distance_matrix.cpu().numpy().reshape(1,-1), "%f", '\n')
         thres_matrix = (distance_matrix < bandwidth).type(torch.float32) * prob.t()
         count = thres_matrix.sum(dim=1)                  # (n, 1)
+        #print('count', count)
         valid = count > min_count
+        #print('valid', valid)
         return seed_point[valid]
 
     def cal_distance_matrix(self, point_a, point_b):
@@ -66,6 +72,8 @@ class Bin_Mean_Shift(nn.Module):
         b_repeat = point_b.repeat(m, 1)                                 # (n*m, 2)
 
         distance = torch.nn.PairwiseDistance(keepdim=True)(a_repeat, b_repeat)  # (n*m, 1)
+
+        #print('cal_distance_matrix', a_repeat[0], b_repeat[0], distance[0])
 
         return distance.view(m, n)
 
@@ -98,6 +106,7 @@ class Bin_Mean_Shift(nn.Module):
         label_num = torch.max(labels).int() + 1
 
         onehot = torch.zeros((n, label_num))
+        #print('label_num', label_num, onehot.shape)
         onehot.scatter_(1, labels.long(), 1.)
 
         return onehot.to(self.device)
@@ -115,8 +124,12 @@ class Bin_Mean_Shift(nn.Module):
         distance_matrix = self.cal_distance_matrix(seed_point, seed_point)  # (n, n)
         intensity = (distance_matrix < bandwidth).type(torch.float32).sum(dim=1)
 
+        print('intensity', intensity)
         # merge center if distance between two points less than bandwidth
         sorted_intensity, indices = torch.sort(intensity, descending=True)
+        print('index', indices)
+        #print('sort', sorted_intensity)
+
         is_center = np.ones(n, dtype=np.bool)
         indices = indices.cpu().numpy()
         center = np.zeros(n, dtype=np.uint8)
@@ -138,8 +151,11 @@ class Bin_Mean_Shift(nn.Module):
         # return seed_point[torch.ByteTensor(center)]
 
         # change mask select to matrix multiply to select points
+        print('labels', labels, labels.shape)
         one_hot = self.label2onehot(torch.Tensor(labels).view(-1, 1))  # (n, label_num)
+        #print('one_hot', one_hot, one_hot.shape)
         weight = one_hot / one_hot.sum(dim=0, keepdim=True)   # (n, label_num)
+        print('one_hot weight', weight, weight.shape)
 
         return torch.matmul(weight.t(), seed_point)
 
@@ -153,6 +169,8 @@ class Bin_Mean_Shift(nn.Module):
         # plus 0.01 to avoid divide by zero
         distance_matrix = 1. / (self.cal_distance_matrix(point, center)+0.01)  # (K, n)
         segmentation = F.softmax(distance_matrix, dim=1)
+        #import pdb
+        #pdb.set_trace()
         return segmentation
 
     def bin_shift(self, prob, embedding, param, gt_seg, bandwidth):
@@ -245,27 +263,40 @@ class Bin_Mean_Shift(nn.Module):
 
         # random sample planar region data points
         rand_index = np.random.choice(np.arange(0, h * w)[prob.cpu().numpy().reshape(-1) > mask_threshold], self.sample_num)
+        print("shape", rand_index.shape)
+        np.savetxt("data/rand_index.txt", rand_index.reshape(1,-1), "%f", '\n')
 
         sample_embedding = embedding[rand_index]
         sample_prob = prob[rand_index]
         sample_param = param[:, rand_index]
+        np.savetxt("data/sample_embedding.txt", sample_embedding.t().cpu().numpy().reshape(1,-1), "%f", '\n')
 
         # generate seed points and filter out those with low density
         seed_point = self.generate_seed(sample_embedding, self.anchor_num)
+        print("seed_point", seed_point.shape)
+        np.savetxt("data/generate_seed.txt", seed_point.t().cpu().numpy().reshape(1,-1), "%f", '\n')
         seed_point = self.filter_seed(sample_embedding, sample_prob, seed_point, bandwidth=self.bandwidth, min_count=3)
+        print("seed_point", seed_point.shape)
+        np.savetxt("data/filter_seed.txt", seed_point.t().cpu().numpy().reshape(1,-1), "%f", '\n')
 
         with torch.no_grad():
             # start shift points
             for iter in range(self.test_iter):
                 seed_point = self.shift(sample_embedding, sample_prob, seed_point, self.bandwidth)
 
+        np.savetxt("data/shift_seed.txt", seed_point.t().cpu().numpy().reshape(1,-1), "%f", '\n')
+
         # filter again and merge seed points
         seed_point = self.filter_seed(sample_embedding, sample_prob, seed_point, bandwidth=self.bandwidth, min_count=10)
+        np.savetxt("data/filter2_seed.txt", seed_point.t().cpu().numpy().reshape(1,-1), "%f", '\n')
 
         center = self.merge_center(seed_point, bandwidth=self.bandwidth)
+        np.savetxt("data/center.txt", center.t().cpu().numpy().reshape(1,-1), "%f", '\n')
 
         # cluster points using sample_embedding
         segmentation = self.cluster(embedding, center)
+        print("segmentation", segmentation.shape)
+        np.savetxt("data/cluster.txt", segmentation.t().cpu().numpy().reshape(1,-1), "%f", '\n')
 
         sampled_segmentation = segmentation[rand_index]
 
