@@ -58,7 +58,8 @@ def predict(_run, _log):
     k_inv_dot_xy1 = get_coordinate_map(device)
     instance_parameter_loss = InstanceParameterLoss(k_inv_dot_xy1)
 
-    h, w = 192, 256
+    h, w = 240, 320
+    #h, w = 192, 256
 
     with torch.no_grad():
         image = cv2.imread(cfg.image_path)
